@@ -22,9 +22,11 @@
 
 <body>
   <div id="images"></div>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.13.0/css/ol.css" type="text/css">
-  <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.13.0/build/ol.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/geotiff"></script>
+  <link rel="stylesheet" href="css/libs/ol.css" type="text/css"> <!-- https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.13.0/css/ol.css -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.13.0/build/ol.js -->
+  <script src="js/libs/ol.js"></script> <!-- https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.13.0/build/ol.js -->
+  <script src="js/libs/geotiff.js"></script> <!-- https://cdn.jsdelivr.net/npm/geotiff -->
+  <script src="js/libs/plotty.min.js"></script> <!-- https://pbabik.github.io/webraster/lib/plotty.min.js-->
   <style media="screen">
     .map {
       position: absolute;
@@ -33,135 +35,77 @@
       left: 5px;
       right: 5px;
     }
+    .rastersSettings {
+      position: absolute;
+      display: none;
+      top: 55px;
+      right: 45px;
+      z-index: 15;
+      background: white;
+      padding: 12px;
+      border-radius: 4px;
+    }
   </style>
   <div id="map" class="map"></div>
-  <script>
-    var bingRoad = new ol.layer.Tile({
-      visible: true,
-      preload: Infinity,
-      name: 'Bing Road',
-      source: new ol.source.BingMaps({
-        key: 'OR4jawvlzJkSpZV1JKxh~B_CAibllXzRX1f69gB-vsQ~AmzjZ1xIDQF-XPoVbJfgITtHRNUuZP0wZc3aX9tbMC6UWpM3VgxCcOg0IBbKz_X-',
-        imagerySet: 'AerialWithLabelsOnDemand',
-        crossOrigin: 'Anonymous'
-      }),
-    });
-    var dragAndDropInteraction = new ol.interaction.DragAndDrop({
-      formatConstructors: [ol.format.GPX, ol.format.GeoJSON, ol.format.IGC, ol.format.TopoJSON],
-    });
-    var raster = null;
-    var map = new ol.Map({
-      interactions: ol.interaction.defaults().extend([dragAndDropInteraction]),
-      // controls: ol.control.defaults().extend([scaleControl(), new ol.control.FullScreen()]),
-      layers: [
-        bingRoad
-      ],
-      target: 'map',
-      view: new ol.View({
-        center: [0, 0],
-        zoom: 2
-      }),
-    });
-
-    async function displayImage(data) {
-      const tiff = await GeoTIFF.fromArrayBuffer(data);
-      const img = await tiff.getImage();
-      const width = img.getWidth();
-      const height = img.getHeight();
-      const subfileNumber = await tiff.getImageCount();
-
-      const readImageData = async (image, options = {}) => {
-        const rasters = await image.readRasters(options);
-        const {
-          width,
-          height
-        } = rasters;
-        const band = image.getSamplesPerPixel();
-        const arr = []; //custom array for canvas
-        for (let i = 0; i < rasters[0].length; i++) { //loop through first band
-          if (band > 1) { // for multiple bands
-            if (rasters[0][i] == 0 && rasters[1][i] == 0 && rasters[2][i] == 0) {
-              // hide pixels having value 0 for all 3 bands i-e: black pixels
-              arr[i * 4] = rasters[0][i]; //r
-              arr[i * 4 + 1] = rasters[1][i]; //g
-              arr[i * 4 + 2] = rasters[2][i]; //b
-              arr[i * 4 + 3] = 0; //a
-            } else {
-              arr[i * 4] = rasters[0][i];
-              arr[i * 4 + 1] = rasters[1][i];
-              arr[i * 4 + 2] = rasters[2][i];
-              arr[i * 4 + 3] = 255;
-            }
-          } else {
-            arr[i * 4] = rasters[0][i];
-            arr[i * 4 + 1] = rasters[0][i];
-            arr[i * 4 + 2] = rasters[0][i];
-            arr[i * 4 + 3] = 255;
-          }
-        }
-        const data = new Uint8ClampedArray(arr);
-        return new ImageData(data, width, height);
-      }
-
-      const showImage = async (subfileIndex) => {
-        const image = await tiff.getImage(subfileIndex);
-        const maxSize = 1024;
-        let startX = parseInt((image.getWidth() - width) / 2);
-        if (startX < 0) startX = 0;
-        let endX = parseInt((image.getWidth() + width) / 2);
-        if (endX > image.getWidth())
-          endX = image.getWidth();
-
-        let startY = parseInt((image.getHeight() - height) / 2);
-        if (startY < 0) startY = 0;
-        let endY = parseInt((image.getHeight() + height) / 2);
-        if (endY > image.getHeight()) {
-          endY = image.getHeight();
-        }
-        const data = await readImageData(image, {
-          window: [startX, startY, endX, endY]
-        });
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const extent = image.getBoundingBox();
-        canvas.width = width;
-        canvas.height = height;
-        ctx.putImageData(data, 0, 0);
-        raster = new ol.layer.Image({
-          source: new ol.source.ImageStatic({
-            url: canvas.toDataURL(),
-            projection: 'EPSG:4326',
-            imageExtent: extent
-          }),
-          title: "GeoTIFF",
-          visible: true
-        });
-        map.addLayer(raster);
-        zoomToExtent(ol.proj.transformExtent(extent, 'EPSG:4326', 'EPSG:3857'));
-      }
-      for (let i = 0; i < subfileNumber; i++) {
-        await showImage(i)
-      }
-    }
-
-    map.getViewport().addEventListener('drop', function(event) {
-      var name = event.dataTransfer.files[0].name;
-      if (name.indexOf("tif") !== -1) {
-        event.preventDefault();
-        const files = event.dataTransfer.files;
-        files[0].arrayBuffer().then(displayImage);
-
-      }
-    });
-
-    function zoomToExtent(extent) {
-      map.getView().fit(extent, {
-        duration: 1000,
-        padding: [50, 50, 50, 50]
-      });
-    }
-  </script>
+  <div class="rastersSettings">
+    <div style="width: 100%">
+       <select id="ex1_colorscaleselect" style="width: 100%;">
+          <option value="viridis">viridis</option>
+          <option value="inferno">inferno</option>
+          <option value="rainbow">rainbow</option>
+          <option value="jet">jet</option>
+          <option value="hsv">hsv</option>
+          <option value="hot">hot</option>
+          <option value="cool">cool</option>
+          <option value="spring">spring</option>
+          <option value="summer">summer</option>
+          <option value="autumn">autumn</option>
+          <option value="winter">winter</option>
+          <option value="bone">bone</option>
+          <option value="copper">copper</option>
+          <option value="greys">greys</option>
+          <option value="yignbu">yignbu</option>
+          <option value="greens">greens</option>
+          <option value="yiorrd">yiorrd</option>
+          <option value="bluered">bluered</option>
+          <option value="rdbu">rdbu</option>
+          <option value="picnic">picnic</option>
+          <option value="portland">portland</option>
+          <option value="blackbody">blackbody</option>
+          <option value="earth" selected>earth</option>
+          <option value="electric">electric</option>
+          <option value="magma">magma</option>
+          <option value="plasma">plasma</option>
+       </select>
+       <span style="display: table; width: 100%;">
+         <label style="width: 3em;">Min:</label>
+         <span style="display: table-cell; width: auto;">
+           <input id="ex1_min" max="5000" min="0" type="range" value="0" style="width: 100%;" oninput="updateTextInput(this.value, 'ex1_min_label');">
+         </span>
+         <label id="ex1_min_label" for="ex1_min" style="display: table-cell; width: 3em; text-align: right;">0</label>
+       </span>
+       <span style="display: table; width: 100%;">
+         <label style="width: 3em;">Max: </label>
+         <span style="display: table-cell; width: auto;">
+           <input id="ex1_max" max="5000" min="0" type="range" value="5000" style="width: 100%;" oninput="updateTextInput(this.value, 'ex1_max_label');">
+         </span>
+         <label id="ex1_max_label" for="ex1_max" style="display: table-cell; width: 3em; text-align: right;">5000</label>
+       </span>
+       <span style="display: table; width: 100%;">
+         <label style="width: 3em;">Clamp Low: </label>
+         <span style="display: table-cell; width: auto;">
+           <input id="ex1_clamp_low" checked="checked" type="checkbox" onchange="setClampRaster();">
+         </span>
+       </span>
+       <span style="display: table; width: 100%;">
+         <label style="width: 3em;">Clamp High: </label>
+         <span style="display: table-cell; width: auto;">
+           <input id="ex1_clamp_high" checked="checked" type="checkbox" onchange="setClampRaster();">
+         </span>
+       </span>
+    </div>
+  </div>
+  <script src="js/custom/script.js"></script>
 </body>
 
 </html>
